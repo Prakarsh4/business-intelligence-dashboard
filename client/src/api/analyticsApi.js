@@ -21,9 +21,21 @@ apiClient.interceptors.response.use(
   }
 );
 
-export const fetchSummary = () => apiClient.get('/summary');
-export const fetchRevenueTrend = () => apiClient.get('/revenue-trend');
-export const fetchCategoryPerformance = () => apiClient.get('/category-performance');
-export const fetchRegionalPerformance = () => apiClient.get('/region-performance');
-export const fetchTopProducts = (limit = 5) => apiClient.get(`/top-products?limit=${limit}`);
-export const fetchRecentTransactions = (page = 1, limit = 8) => apiClient.get(`/recent-transactions?page=${page}&limit=${limit}`);
+const buildQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => {
+    if (val !== undefined && val !== null && val !== '') {
+      query.append(key, val);
+    }
+  });
+  const qs = query.toString();
+  return qs ? `?${qs}` : '';
+};
+
+export const fetchSummary = (params) => apiClient.get(`/summary${buildQueryString(params)}`);
+export const fetchRevenueTrend = (params) => apiClient.get(`/revenue-trend${buildQueryString(params)}`);
+export const fetchCategoryPerformance = (params) => apiClient.get(`/category-performance${buildQueryString(params)}`);
+export const fetchRegionalPerformance = (params) => apiClient.get(`/region-performance${buildQueryString(params)}`);
+export const fetchTopProducts = (params) => apiClient.get(`/top-products${buildQueryString(params)}`);
+export const fetchBusinessInsights = (params) => apiClient.get(`/insights${buildQueryString(params)}`);
+export const fetchRecentTransactions = (params) => apiClient.get(`/recent-transactions${buildQueryString(params)}`);

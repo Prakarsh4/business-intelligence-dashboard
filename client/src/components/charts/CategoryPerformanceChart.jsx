@@ -2,7 +2,7 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 
-export const CategoryPerformanceChart = ({ data }) => {
+export const CategoryPerformanceChart = ({ data, onCategorySelect }) => {
   if (!data || data.length === 0) {
     return <div className="chart-empty">No category data available.</div>;
   }
@@ -11,11 +11,19 @@ export const CategoryPerformanceChart = ({ data }) => {
     <div className="chart-card">
       <div className="chart-header">
         <h3 className="chart-title">Category Breakdown</h3>
-        <span className="chart-subtitle">Revenue vs. Realized Margin</span>
+        <span className="chart-subtitle">Click a bar to filter dashboard by category</span>
       </div>
       <div className="chart-body">
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+          <BarChart
+            data={data}
+            margin={{ top: 10, right: 20, left: 0, bottom: 20 }}
+            onClick={(state) => {
+              if (state && state.activePayload && state.activePayload[0]) {
+                onCategorySelect(state.activePayload[0].payload.category);
+              }
+            }}
+          >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
             <XAxis
               dataKey="category"
@@ -38,8 +46,8 @@ export const CategoryPerformanceChart = ({ data }) => {
               contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', color: '#fff', border: 'none' }}
             />
             <Legend verticalAlign="top" height={36} iconType="rect" />
-            <Bar dataKey="revenue" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Revenue" />
-            <Bar dataKey="profit" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Profit" />
+            <Bar dataKey="revenue" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Revenue" style={{ cursor: 'pointer' }} />
+            <Bar dataKey="profit" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Profit" style={{ cursor: 'pointer' }} />
           </BarChart>
         </ResponsiveContainer>
       </div>

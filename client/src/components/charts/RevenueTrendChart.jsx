@@ -2,16 +2,30 @@ import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 
-export const RevenueTrendChart = ({ data }) => {
+export const RevenueTrendChart = ({ data, granularity, onGranularityChange }) => {
   if (!data || data.length === 0) {
-    return <div className="chart-empty">No trend data available.</div>;
+    return <div className="chart-empty">No trend data available for current selection.</div>;
   }
 
   return (
     <div className="chart-card">
-      <div className="chart-header">
-        <h3 className="chart-title">Revenue & Profit Trajectory</h3>
-        <span className="chart-subtitle">Monthly Financial Aggregation</span>
+      <div className="chart-header-row">
+        <div>
+          <h3 className="chart-title">Revenue & Profit Trajectory</h3>
+          <span className="chart-subtitle">Time-series financial breakdown</span>
+        </div>
+        <div className="granularity-toggle">
+          {['daily', 'weekly', 'monthly'].map((g) => (
+            <button
+              key={g}
+              type="button"
+              className={`granularity-btn ${granularity === g ? 'active' : ''}`}
+              onClick={() => onGranularityChange(g)}
+            >
+              {g.charAt(0).toUpperCase() + g.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="chart-body">
         <ResponsiveContainer width="100%" height={300}>
@@ -27,10 +41,10 @@ export const RevenueTrendChart = ({ data }) => {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis dataKey="period" stroke="#64748b" fontSize={12} tickLine={false} />
+            <XAxis dataKey="period" stroke="#64748b" fontSize={11} tickLine={false} />
             <YAxis
               stroke="#64748b"
-              fontSize={12}
+              fontSize={11}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}

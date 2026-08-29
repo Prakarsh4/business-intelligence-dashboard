@@ -1,90 +1,136 @@
 import Transaction from '../models/Transaction.js';
+import { buildFilterQuery, getPreviousPeriodDates } from '../utils/filterBuilder.js';
 
-export const getDashboardSummary = async () => {
-  const summary = await Transaction.aggregate([
-    {
-      $facet: {
-        allOrders: [
-          {
-            $group: {
-              _id: null,
-              totalOrders: { $sum: 1 },
-              totalRevenue: { $sum: '$salesAmount' },
-              totalProfit: { $sum: '$profit' },
-              totalQuantity: { $sum: '$quantity' }
-            }
-          }
-        ],
-        completedOrders: [
-          {
-            $match: {
-              orderStatus: { $nin: ['Cancelled', 'Refunded'] }
-            }
-          },
-          {
-            $group: {
-              _id: null,
-              realizedRevenue: { $sum: '$salesAmount' },
-              realizedProfit: { $sum: '$profit' },
-              realizedOrders: { $sum: 1 }
-            }
-          }
-        ]
+export const getDashboardSummary = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+
+  const calculateMetrics = async (matchStage) => {
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$salesAmount' },
+          totalProfit: { $sum: '$profit' },
+          totalOrders: { $sum: 1 },
+          totalQuantity: { $sum: '$quantity' }
+        }
       }
-    }
-  ]);
+    ];
+    const res = await Transaction.aggregate(pipeline);
+    const data = res[0] || { totalRevenue: 0, totalProfit: 0, totalOrders: 0, totalQuantity: 0 };
+    const totalRevenue = Number(data.totalRevenue.toFixed(2));
+    const totalProfit = Number(data.profit ? data.profit.toFixed(2) : data.totalProfit.toFixed(2));
+    const averageOrderValue = data.totalOrders > 0 ? Number((totalRevenue / data.totalOrders).toFixed(2)) : 0;
+    const profitMargin = totalRevenue > 0 ? Number(((totalProfit / totalRevenue) * 100).toFixed(2)) : 0;
 
-  const raw = summary[0]?.allOrders[0] || { totalOrders: 0, totalRevenue: 0, totalProfit: 0, totalQuantity: 0 };
-  const realized = summary[0]?.completedOrders[0] || { realizedRevenue: 0, realizedProfit: 0, realizedOrders: 0 };
+    return {
+      totalRevenue,
+      totalProfit,
+      totalOrders: data.totalOrders,
+      totalQuantity: data.totalQuantity,
+      averageOrderValue,
+      profitMargin
+    };
+  };
 
-  const totalRevenue = Number(raw.totalRevenue.toFixed(2));
-  const totalProfit = Number(raw.totalProfit.toFixed(2));
-  const totalOrders = raw.totalOrders;
-  const totalQuantity = raw.totalQuantity;
+  // 1. Current Period
+  const current = await calculateMetrics(matchFilter);
 
-  const averageOrderValue = totalOrders > 0 ? Number((totalRevenue / totalOrders).toFixed(2)) : 0;
-  const profitMargin = totalRevenue > 0 ? Number(((totalProfit / totalRevenue) * 100).toFixed(2)) : 0;
+  // 2. Dynamic Period Comparison Calculation
+  let comparison = null;
+  const { startDate, endDate } = queryParams;
+  const previousDates = getPreviousPeriodDates(startDate, endDate);
+
+  if (previousDates) {
+    const previousFilter = buildFilterQuery({
+      ...queryParams,
+      startDate: previousDates.previousStart,
+      endDate: previousDates.previousEnd
+    });
+
+    const previous = await calculateMetrics(previousFilter);
+
+    const calcPercentDelta = (curr, prev) => {
+      if (prev === 0) return curr > 0 ? 100 : 0;
+      return Number((((curr - prev) / prev) * 100).toFixed(2));
+    };
+
+    comparison = {
+      revenueDelta: calcPercentDelta(current.totalRevenue, previous.totalRevenue),
+      profitDelta: calcPercentDelta(current.totalProfit, previous.totalProfit),
+      ordersDelta: calcPercentDelta(current.totalOrders, previous.totalOrders),
+      aovDelta: calcPercentDelta(current.averageOrderValue, previous.averageOrderValue),
+      previousValues: previous
+    };
+  }
 
   return {
-    totalRevenue,
-    totalProfit,
-    totalOrders,
-    totalQuantity,
-    averageOrderValue,
-    profitMargin,
-    completedRevenue: Number(realized.realizedRevenue.toFixed(2)),
-    completedOrdersCount: realized.realizedOrders
+    current,
+    comparison
   };
 };
 
-export const getRevenueTrend = async () => {
+export const getRevenueTrend = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+  const { granularity = 'monthly' } = queryParams;
+
+  let dateGrouping;
+  let periodFormat;
+
+  if (granularity === 'daily') {
+    dateGrouping = {
+      year: { $year: '$date' },
+      month: { $month: '$date' },
+      day: { $dayOfMonth: '$date' }
+    };
+    periodFormat = {
+      $concat: [
+        { $toString: '$_id.year' },
+        '-',
+        { $cond: [{ $lt: ['$_id.month', 10] }, { $concat: ['0', { $toString: '$_id.month' }] }, { $toString: '$_id.month' }] },
+        '-',
+        { $cond: [{ $lt: ['$_id.day', 10] }, { $concat: ['0', { $toString: '$_id.day' }] }, { $toString: '$_id.day' }] }
+      ]
+    };
+  } else if (granularity === 'weekly') {
+    dateGrouping = {
+      year: { $year: '$date' },
+      week: { $isoWeek: '$date' }
+    };
+    periodFormat = {
+      $concat: [{ $toString: '$_id.year' }, '-W', { $toString: '$_id.week' }]
+    };
+  } else {
+    // Default: Monthly
+    dateGrouping = {
+      year: { $year: '$date' },
+      month: { $month: '$date' }
+    };
+    periodFormat = {
+      $concat: [
+        { $toString: '$_id.year' },
+        '-',
+        { $cond: [{ $lt: ['$_id.month', 10] }, { $concat: ['0', { $toString: '$_id.month' }] }, { $toString: '$_id.month' }] }
+      ]
+    };
+  }
+
   return await Transaction.aggregate([
+    { $match: matchFilter },
     {
       $group: {
-        _id: {
-          year: { $year: '$date' },
-          month: { $month: '$date' }
-        },
+        _id: dateGrouping,
         revenue: { $sum: '$salesAmount' },
         profit: { $sum: '$profit' },
         orders: { $sum: 1 }
       }
     },
+    { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.week': 1 } },
     {
-      $sort: { '_id.year': 1, '_id.month': 1 }     },     {$project: {
+      $project: {
         _id: 0,
-        period: {
-          $concat: [
-            { $toString: '$_id.year' },
-            '-',
-            {
-              $cond: [
-                { $lt: ['$_id.month', 10] },                 {$concat: ['0', { $toString: '$_id.month' }] },
-                { $toString: '$_id.month' }
-              ]
-            }
-          ]
-        },
+        period: periodFormat,
         revenue: { $round: ['$revenue', 2] },
         profit: { $round: ['$profit', 2] },
         orders: 1
@@ -93,8 +139,11 @@ export const getRevenueTrend = async () => {
   ]);
 };
 
-export const getCategoryPerformance = async () => {
+export const getCategoryPerformance = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+
   return await Transaction.aggregate([
+    { $match: matchFilter },
     {
       $group: {
         _id: '$category',
@@ -104,43 +153,64 @@ export const getCategoryPerformance = async () => {
         unitsSold: { $sum: '$quantity' }
       }
     },
+    { $sort: { revenue: -1 } },
     {
-      $sort: { revenue: -1 }     },     {$project: {
+      $project: {
         _id: 0,
         category: '$_id',
         revenue: { $round: ['$revenue', 2] },
         profit: { $round: ['$profit', 2] },
         orders: 1,
-        unitsSold: 1
+        unitsSold: 1,
+        margin: {
+          $cond: [
+            { $gt: ['$revenue', 0] },
+            { $round: [{ $multiply: [{ $divide: ['$profit', '$revenue'] }, 100] }, 2] },
+            0
+          ]
+        }
       }
     }
   ]);
 };
 
-export const getRegionalPerformance = async () => {
+export const getRegionalPerformance = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+
   return await Transaction.aggregate([
+    { $match: matchFilter },
     {
       $group: {
         _id: '$region',
         revenue: { $sum: '$salesAmount' },
         profit: { $sum: '$profit' },
-        orders: { $sum: 1 }
+        orders: { $sum: 1 },
+        unitsSold: { $sum: '$quantity' }
       }
     },
+    { $sort: { revenue: -1 } },
     {
-      $sort: { revenue: -1 }     },     {$project: {
+      $project: {
         _id: 0,
         region: '$_id',
         revenue: { $round: ['$revenue', 2] },
         profit: { $round: ['$profit', 2] },
-        orders: 1
+        orders: 1,
+        avgOrderValue: {
+          $cond: [{ $gt: ['$orders', 0] }, { $round: [{ $divide: ['$revenue', '$orders'] }, 2] }, 0]
+        }
       }
     }
   ]);
 };
 
-export const getTopProducts = async (limit = 5) => {
+export const getTopProducts = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+  const { limit = 5, sortBy = 'revenue' } = queryParams;
+  const sortStage = sortBy === 'profit' ? { profit: -1 } : { revenue: -1 };
+
   return await Transaction.aggregate([
+    { $match: matchFilter },
     {
       $group: {
         _id: '$product',
@@ -151,9 +221,8 @@ export const getTopProducts = async (limit = 5) => {
         orders: { $sum: 1 }
       }
     },
-    {
-      $sort: { revenue: -1 }     },     {$limit: Number(limit)
-    },
+    { $sort: sortStage },
+    { $limit: Number(limit) },
     {
       $project: {
         _id: 0,
@@ -168,16 +237,90 @@ export const getTopProducts = async (limit = 5) => {
   ]);
 };
 
-export const getRecentTransactions = async (limit = 10, page = 1) => {
-  const skip = (page - 1) * limit;
+export const getBusinessInsights = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+
+  const [categories, regions, products, summaryRes] = await Promise.all([
+    getCategoryPerformance(queryParams),
+    getRegionalPerformance(queryParams),
+    getTopProducts({ ...queryParams, limit: 1 }),
+    getDashboardSummary(queryParams)
+  ]);
+
+  const insights = [];
+
+  if (categories.length > 0) {
+    const topCat = categories[0];
+    const lowestCat = categories[categories.length - 1];
+    insights.push({
+      type: 'positive',
+      title: 'Top Category Driver',
+      text: `${topCat.category} leads sales, generating $${topCat.revenue.toLocaleString()} (${topCat.margin}% margin).`
+    });
+
+    if (categories.length > 1) {
+      insights.push({
+        type: 'warning',
+        title: 'Lowest Category Contribution',
+        text: `${lowestCat.category} accounted for only $${lowestCat.revenue.toLocaleString()} across ${lowestCat.orders} orders.`
+      });
+    }
+  }
+
+  if (regions.length > 0) {
+    const topRegion = regions[0];
+    insights.push({
+      type: 'info',
+      title: 'Dominant Territory',
+      text: `${topRegion.region} generated the highest revenue with an average order value of $${topRegion.avgOrderValue}.`
+    });
+  }
+
+  if (products.length > 0) {
+    const topProd = products[0];
+    insights.push({
+      type: 'positive',
+      title: 'Best Selling SKU',
+      text: `"${topProd.product}" is currently the #1 product generating $${topProd.revenue.toLocaleString()}.`
+    });
+  }
+
+  if (summaryRes.comparison) {
+    const revDelta = summaryRes.comparison.revenueDelta;
+    const isUp = revDelta >= 0;
+    insights.push({
+      type: isUp ? 'positive' : 'negative',
+      title: 'Period-over-Period Trajectory',
+      text: `Revenue is ${isUp ? 'up' : 'down'} by ${Math.abs(revDelta)}% compared to the immediately preceding time window.`
+    });
+  }
+
+  return insights;
+};
+
+export const getRecentTransactions = async (queryParams = {}) => {
+  const { limit = 10, page = 1, search, sortBy = 'date', sortOrder = 'desc' } = queryParams;
+  const matchFilter = buildFilterQuery(queryParams);
+
+  // Search filter across customer, product, and transactionId
+  if (search && search.trim()) {
+    const regex = new RegExp(search.trim(), 'i');
+    matchFilter.$or = [{ customer: regex }, { product: regex }, { transactionId: regex }];
+  }
+
+  const sortOptions = {};
+  sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+  const skip = (Number(page) - 1) * Number(limit);
+
   const [data, total] = await Promise.all([
-    Transaction.find()
-      .sort({ date: -1 })
+    Transaction.find(matchFilter)
+      .sort(sortOptions)
       .skip(skip)
       .limit(Number(limit))
       .select('-__v -createdAt -updatedAt')
       .lean(),
-    Transaction.countDocuments()
+    Transaction.countDocuments(matchFilter)
   ]);
 
   return {
@@ -186,7 +329,7 @@ export const getRecentTransactions = async (limit = 10, page = 1) => {
       totalRecords: total,
       page: Number(page),
       limit: Number(limit),
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / Number(limit))
     }
   };
 };

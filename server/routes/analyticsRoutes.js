@@ -5,6 +5,7 @@ import {
   getCategoryPerformance,
   getRegionPerformance,
   getTopProducts,
+  getBusinessInsights,
   getRecentTransactions
 } from '../controllers/analyticsController.js';
 
@@ -15,6 +16,7 @@ router.get('/revenue-trend', getRevenueTrend);
 router.get('/category-performance', getCategoryPerformance);
 router.get('/region-performance', getRegionPerformance);
 router.get('/top-products', getTopProducts);
+router.get('/insights', getBusinessInsights);
 router.get('/recent-transactions', getRecentTransactions);
 
 export default router;

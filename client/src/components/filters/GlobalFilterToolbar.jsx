@@ -1,11 +1,18 @@
 import React from 'react';
-import { Filter, X, RotateCcw } from 'lucide-react';
+import { Filter, X, RotateCcw, FileSpreadsheet, FileText } from 'lucide-react';
 
 const REGIONS = ['North America', 'Europe', 'Asia Pacific', 'Latin America', 'Middle East'];
 const CATEGORIES = ['Electronics', 'Home & Kitchen', 'Apparel', 'Office Supplies', 'Fitness & Outdoors'];
 const STATUSES = ['Completed', 'Shipped', 'Pending', 'Cancelled', 'Refunded'];
 
-export const GlobalFilterToolbar = ({ filters, onFilterChange, onReset }) => {
+export const GlobalFilterToolbar = ({
+  filters,
+  onFilterChange,
+  onReset,
+  onOpenReport,
+  onExportCsv,
+  exporting
+}) => {
   const handleDatePreset = (preset) => {
     const now = new Date();
     let start = null;
@@ -42,11 +49,35 @@ export const GlobalFilterToolbar = ({ filters, onFilterChange, onReset }) => {
           <Filter size={16} />
           <span>Global Analysis Controls</span>
         </div>
-        {hasActiveFilters && (
-          <button className="filter-reset-btn" onClick={onReset}>
-            <RotateCcw size={14} /> Reset All
+
+        <div className="filter-header-actions">
+          <button
+            type="button"
+            className="action-btn btn-export"
+            onClick={onExportCsv}
+            disabled={exporting}
+            title="Export filtered transactions as CSV file"
+          >
+            <FileSpreadsheet size={14} />
+            {exporting ? 'Exporting CSV...' : 'Export CSV'}
           </button>
-        )}
+
+          <button
+            type="button"
+            className="action-btn btn-report"
+            onClick={onOpenReport}
+            title="Generate printable Executive BI Summary Report"
+          >
+            <FileText size={14} />
+            Executive Report
+          </button>
+
+          {hasActiveFilters && (
+            <button className="filter-reset-btn" onClick={onReset} title="Clear all active filters">
+              <RotateCcw size={14} /> Reset
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="filter-controls-grid">
@@ -131,7 +162,7 @@ export const GlobalFilterToolbar = ({ filters, onFilterChange, onReset }) => {
       {/* Active Filter Chips */}
       {hasActiveFilters && (
         <div className="filter-chips-row">
-          <span className="chips-label">Active:</span>
+          <span className="chips-label">Active Scope:</span>
           {Object.entries(filters).map(([k, v]) => {
             if (!v) return null;
             return (
@@ -141,6 +172,7 @@ export const GlobalFilterToolbar = ({ filters, onFilterChange, onReset }) => {
                   type="button"
                   onClick={() => onFilterChange({ [k]: '' })}
                   className="chip-remove"
+                  aria-label={`Remove filter ${k}`}
                 >
                   <X size={12} />
                 </button>

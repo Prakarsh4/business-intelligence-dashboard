@@ -62,3 +62,23 @@ export const getRecentTransactions = async (req, res, next) => {
     next(error);
   }
 };
+
+export const exportTransactionsCsv = async (req, res, next) => {
+  try {
+    const csvContent = await analyticsService.exportTransactionsCsv(req.query);
+    const { startDate, endDate } = req.query;
+    let filename = 'business-analytics';
+    if (startDate && endDate) {
+      filename += `-${startDate}-to-${endDate}`;
+    } else {
+      filename += '-filtered';
+    }
+    filename += '.csv';
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+};

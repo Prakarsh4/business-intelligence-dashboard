@@ -333,3 +333,59 @@ export const getRecentTransactions = async (queryParams = {}) => {
     }
   };
 };
+
+export const exportTransactionsCsv = async (queryParams = {}) => {
+  const matchFilter = buildFilterQuery(queryParams);
+
+  const { search } = queryParams;
+  if (search && search.trim()) {
+    const regex = new RegExp(search.trim(), 'i');
+    matchFilter.$or = [{ customer: regex }, { product: regex }, { transactionId: regex }];
+  }
+
+  // Fetch filtered transactions (capped at 5000 for safety)
+  const transactions = await Transaction.find(matchFilter)
+    .sort({ date: -1 })
+    .limit(5000)
+    .select('-__v -createdAt -updatedAt')
+    .lean();
+
+  const headers = [
+    'Transaction ID',
+    'Date',
+    'Customer',
+    'Product',
+    'Category',
+    'Region',
+    'Sales Amount ($)',
+    'Quantity',
+    'Profit ($)',
+    'Payment Method',
+    'Order Status'
+  ];
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const rows = transactions.map((t) => [
+    escapeCsv(t.transactionId),
+    escapeCsv(t.date ? new Date(t.date).toISOString().split('T')[0] : ''),
+    escapeCsv(t.customer),
+    escapeCsv(t.product),
+    escapeCsv(t.category),
+    escapeCsv(t.region),
+    escapeCsv(t.salesAmount),
+    escapeCsv(t.quantity),
+    escapeCsv(t.profit),
+    escapeCsv(t.paymentMethod),
+    escapeCsv(t.orderStatus)
+  ]);
+
+  return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+};

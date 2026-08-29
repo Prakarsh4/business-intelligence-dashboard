@@ -67,7 +67,9 @@ const transactionSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for time-series and filtered aggregations
+// Compound indexes for time-series and filtered aggregations
 transactionSchema.index({ date: -1, category: 1, region: 1 });
+transactionSchema.index({ date: -1, orderStatus: 1, paymentMethod: 1 });
+transactionSchema.index({ customer: 1, product: 1 });
 
 export default mongoose.model('Transaction', transactionSchema);

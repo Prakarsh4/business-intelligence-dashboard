@@ -39,3 +39,26 @@ export const fetchRegionalPerformance = (params) => apiClient.get(`/region-perfo
 export const fetchTopProducts = (params) => apiClient.get(`/top-products${buildQueryString(params)}`);
 export const fetchBusinessInsights = (params) => apiClient.get(`/insights${buildQueryString(params)}`);
 export const fetchRecentTransactions = (params) => apiClient.get(`/recent-transactions${buildQueryString(params)}`);
+
+export const exportTransactionsCsv = async (params) => {
+  const url = `${API_BASE_URL}/export/csv${buildQueryString(params)}`;
+  const response = await axios.get(url, { responseType: 'blob' });
+  const blob = new Blob([response.data], { type: 'text/csv' });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = 'business-analytics.csv';
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) filename = match[1];
+  }
+
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+  return filename;
+};
